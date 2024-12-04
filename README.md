@@ -1,0 +1,2 @@
+# md2MarpAPI
+Geminiを用いてmdをMarp形式に変換するAPI
