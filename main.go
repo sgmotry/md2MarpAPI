@@ -64,12 +64,7 @@ func extractTextFromQiitaBlock(blockText string) string {
 // マークダウンをページ（ヘッダー基準）ごとに分ける
 var images []string    // 画像のURL分離用
 var images_index []int // 分離した画像があった配列番号
-func parseMarkdown(filePath string) ([]*Slide, error) {
-	content, err := os.ReadFile(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("[ERROR] failed to read markdown file: %w", err)
-	}
-
+func parseMarkdown(content []byte) ([]*Slide, error) {
 	// Goldmarkの初期化
 	mdParser := goldmark.New(
 		goldmark.WithExtensions(
@@ -85,7 +80,7 @@ func parseMarkdown(filePath string) ([]*Slide, error) {
 	// ASTを歩いてスライドを構築
 	var count = -1
 	var afterList = false
-	err = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+	err := ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if entering {
 			// fmt.Println(n.Kind())
 			switch n.Kind() {
@@ -280,21 +275,9 @@ func convertToMarp(slides []*Slide) string {
 	return marpBuilder.String()
 }
 
-var debug = false
-
-func main() {
-	var inputFile string
-
-	// ファイル読み込み
-	if len(os.Args) < 2 {
-		inputFile = "example.md" // デフォルトファイル名
-		fmt.Println("[INFO] No filename input. Use example.md")
-	} else {
-		inputFile = os.Args[1]
-	}
-
+func md2s(content []byte, debug bool) {
 	// マークダウンをページごとに変換
-	slides, err := parseMarkdown(inputFile)
+	slides, err := parseMarkdown(content)
 	if err != nil {
 		log.Fatalf("[ERROR] Failed to parse Markdown: %v", err)
 	}
@@ -317,11 +300,19 @@ func main() {
 		marpContent = convertToMarp(slides)
 	}
 	// 変換結果をファイル出力
-	outputFile := strings.TrimSuffix(inputFile, ".md") + "_marp.md"
+	outputFile := strings.TrimSuffix("example", ".md") + "_marp.md"
 	err = os.WriteFile(outputFile, []byte(marpContent), 0644)
 	if err != nil {
 		log.Fatalf("[ERROR] Failed to write Marp file: %v", err)
 	}
 
 	fmt.Printf("[SUCCESS] Marp file generated: %s\n", outputFile)
+}
+
+func main() {
+	content, err := os.ReadFile("example.md")
+	if err != nil {
+		fmt.Println("[ERROR] failed to read markdown file: %w", err)
+	}
+	md2s(content, false)
 }
