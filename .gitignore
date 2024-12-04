@@ -23,3 +23,8 @@ go.work.sum
 
 # env file
 .env
+
+# test file
+astTypes.md
+example.md
+example_marp.md
