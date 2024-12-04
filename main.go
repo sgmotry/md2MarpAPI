@@ -275,14 +275,13 @@ func convertToMarp(slides []*Slide) string {
 	return marpBuilder.String()
 }
 
-func md2s(content []byte, debug bool) {
+func md2s(content []byte, debug bool) (marpContent string) {
 	// マークダウンをページごとに変換
 	slides, err := parseMarkdown(content)
 	if err != nil {
 		log.Fatalf("[ERROR] Failed to parse Markdown: %v", err)
 	}
 
-	var marpContent string
 	if !debug {
 		// Gemini で内容をスライドっぽくする
 		var tmp []*Slide
@@ -299,14 +298,7 @@ func md2s(content []byte, debug bool) {
 		slides = append(tmp, slides[1:]...) //qiitaのヘッダーを消すため
 		marpContent = convertToMarp(slides)
 	}
-	// 変換結果をファイル出力
-	outputFile := strings.TrimSuffix("example", ".md") + "_marp.md"
-	err = os.WriteFile(outputFile, []byte(marpContent), 0644)
-	if err != nil {
-		log.Fatalf("[ERROR] Failed to write Marp file: %v", err)
-	}
-
-	fmt.Printf("[SUCCESS] Marp file generated: %s\n", outputFile)
+	return marpContent
 }
 
 func main() {
@@ -314,5 +306,14 @@ func main() {
 	if err != nil {
 		fmt.Println("[ERROR] failed to read markdown file: %w", err)
 	}
-	md2s(content, false)
+	result := md2s(content, false)
+
+	// 変換結果をファイル出力
+	outputFile := strings.TrimSuffix("example", ".md") + "_marp.md"
+	err = os.WriteFile(outputFile, []byte(result), 0644)
+	if err != nil {
+		log.Fatalf("[ERROR] Failed to write Marp file: %v", err)
+	}
+
+	fmt.Printf("[SUCCESS] Marp file generated: %s\n", outputFile)
 }
