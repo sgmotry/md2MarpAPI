@@ -87,7 +87,7 @@ func parseMarkdown(filePath string) ([]*Slide, error) {
 	var afterList = false
 	err = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if entering {
-			fmt.Println(n.Kind())
+			// fmt.Println(n.Kind())
 			switch n.Kind() {
 			case ast.KindHeading:
 				heading := n.(*ast.Heading)
@@ -208,12 +208,13 @@ func analyzeContentWithGemini(slides []*Slide) ([]*Slide, error) {
 
 	// スライドを15個ずつに分割する
 	fmt.Println("[slide length]:", len(slides))
+	var s_size = 12
 	var slide_parts [][]*Slide // 分割したスライドの二次元配列 1要素あたり15個のページ
-	if len(slides) > 15 {
-		block := math.Ceil(float64(len(slides)) / 15)
+	if len(slides) > s_size {
+		block := math.Ceil(float64(len(slides)) / float64(s_size))
 		for i := 0; i < int(block); i++ {
-			start := i * 15
-			end := start + 15
+			start := i * s_size
+			end := start + s_size
 			if end > len(slides) {
 				end = len(slides)
 			}
@@ -249,9 +250,10 @@ func analyzeContentWithGemini(slides []*Slide) ([]*Slide, error) {
 			}()
 		}
 		wg.Wait()
-		if len(slides) > 15 && j != len(slide_parts)-1 {
+		if len(slides) > s_size && j != len(slide_parts)-1 {
 			time.Sleep(62 * time.Second) // 送信時に若干時間がズレるため少し余裕を持たせる
 		}
+		// 分離しておいた画像を代入
 		var image_counter = 0
 		for i, slide := range slides {
 			if slices.Contains(images_index, i+1) {
@@ -278,7 +280,7 @@ func convertToMarp(slides []*Slide) string {
 	return marpBuilder.String()
 }
 
-var debug = true
+var debug = false
 
 func main() {
 	var inputFile string
@@ -310,6 +312,8 @@ func main() {
 		// 連結＆marpタグ追加
 		marpContent = convertToMarp(analyzedSlides)
 	} else {
+		var tmp []*Slide
+		slides = append(tmp, slides[1:]...) //qiitaのヘッダーを消すため
 		marpContent = convertToMarp(slides)
 	}
 	// 変換結果をファイル出力
