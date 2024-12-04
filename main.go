@@ -208,7 +208,7 @@ func analyzeContentWithGemini(slides []*Slide) ([]*Slide, error) {
 
 	// スライドを15個ずつに分割する
 	fmt.Println("[slide length]:", len(slides))
-	var s_size = 12
+	var s_size = 13
 	var slide_parts [][]*Slide // 分割したスライドの二次元配列 1要素あたり15個のページ
 	if len(slides) > s_size {
 		block := math.Ceil(float64(len(slides)) / float64(s_size))
@@ -235,12 +235,12 @@ func analyzeContentWithGemini(slides []*Slide) ([]*Slide, error) {
 			go func() {
 				defer wg.Done()
 				// プロンプト設定するとこ
-				prompt := fmt.Sprintf("コンテンツを数行の箇条書きで要約。コンテンツがない場合は　　を出力。それ以外は要約のみ出力 \nコンテンツ\n%s", slide.Content)
+				prompt := fmt.Sprintf("コンテンツを5行程度の箇条書きでスライド口調に要約。コンテンツがない場合は　　を出力。それ以外は要約のみ出力 \nコンテンツ\n%s", slide.Content)
 				// Gemini API を使用してコンテンツを最適化
-				fmt.Println("[send] images_index:", i)
+				fmt.Println("[send] index:", i)
 				resp, err := model.GenerateContent(ctx, genai.Text(prompt))
 				if err != nil {
-					fmt.Println("[ERROR] at images_index:", i, "\n", err)
+					fmt.Println("[ERROR] at index:", i, "\n", err)
 					return
 				}
 				// レスポンスをスライドに代入
