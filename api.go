@@ -3,9 +3,12 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math"
+	"net/http"
 	"os"
 	"slices"
 	"strings"
@@ -283,6 +286,30 @@ func convertToMarp(slides []*Slide) string {
 	return marpBuilder.String()
 }
 
+func deleteEscape(content []byte) (result []byte) {
+	parse := map[string]interface{}{
+		"md": content,
+	}
+	parsed, err := json.Marshal(parse)
+	if err != nil {
+		fmt.Println("[ERROR] Failed escape json.")
+	}
+	var md map[string]string
+	err = json.Unmarshal(parsed, &md)
+	fmt.Println(md)
+	if err != nil {
+		fmt.Println("[ERROR] decode error:", err)
+		return
+	}
+	encodedMessage := md["md"]
+	// Base64デコード
+	result, err = base64.StdEncoding.DecodeString(encodedMessage)
+	if err != nil {
+		fmt.Println("[ERROR] Failed escape json.")
+	}
+	return result
+}
+
 func md2s(content []byte) (marpContent string) {
 	// マークダウンをページごとに変換
 	slides, err := parseMarkdown(content)
@@ -305,23 +332,21 @@ func md2s(content []byte) (marpContent string) {
 func main() {
 	r := gin.Default()
 
-	// POSTリクエストで文字列を受け取る
+	// 生データを受け取るエンドポイント
 	r.POST("/md2s", func(c *gin.Context) {
-		var requestBody struct {
-			Input string `json:"md"` // リクエストボディのJSONフィールド
-		}
-
-		// JSONのバインド
-		if err := c.ShouldBindJSON(&requestBody); err != nil {
-			c.JSON(400, gin.H{"error": "Invalid request"})
+		// リクエストボディをそのまま読み取る
+		rawData, err := c.GetRawData()
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read request body"})
 			return
 		}
+		decoded := deleteEscape(rawData)
 
-		// 文字列を変換（例: 大文字に変換）
-		transformed := md2s([]byte(requestBody.Input))
+		// 文字列変換の例（全て大文字に変換）
+		transformed := md2s(decoded)
 
-		// 変換結果をJSONで返す
-		c.JSON(200, gin.H{"marp": transformed})
+		// 変換後の文字列をそのまま返す
+		c.String(http.StatusOK, transformed)
 	})
 
 	r.Run(":8080") // デフォルトでポート8080で実行

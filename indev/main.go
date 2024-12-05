@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math"
@@ -282,6 +284,28 @@ func convertToMarp(slides []*Slide) string {
 	return marpBuilder.String()
 }
 
+func deleteEscape(content []byte) (result []byte) {
+	parse := map[string]interface{}{
+		"md": content,
+	}
+	parsed, err := json.Marshal(parse)
+	if err != nil {
+		fmt.Println("[ERROR] Failed escape json.")
+	}
+	var md map[string]string
+	err = json.Unmarshal(parsed, &md)
+	if err != nil {
+		fmt.Println("[ERROR] decode error:", err)
+		return
+	}
+	encodedMessage := md["md"]
+	result, err = base64.StdEncoding.DecodeString(encodedMessage)
+	if err != nil {
+		fmt.Println("[ERROR] Failed escape json.")
+	}
+	return result
+}
+
 func md2s(content []byte, debug bool) (marpContent string) {
 	// マークダウンをページごとに変換
 	slides, err := parseMarkdown(content)
@@ -309,7 +333,8 @@ func main() {
 	if err != nil {
 		fmt.Println("[ERROR] failed to read markdown file: %w", err)
 	}
-	result := md2s(content, false)
+	decoded := deleteEscape(content)
+	result := md2s(decoded, true)
 
 	// 変換結果をファイル出力
 	outputFile := strings.TrimSuffix("example", ".md") + "_marp.md"
