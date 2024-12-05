@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log"
@@ -11,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/google/generative-ai-go/genai"
 	"github.com/joho/godotenv"
 	"github.com/yuin/goldmark"
@@ -65,6 +67,13 @@ func extractTextFromQiitaBlock(blockText string) string {
 var images []string    // 画像のURL分離用
 var images_index []int // 分離した画像があった配列番号
 func parseMarkdown(content []byte) ([]*Slide, error) {
+
+	// qiitaのメタデータを削除
+	separator := []byte{45, 45, 45}
+	tmp := bytes.Split(content, separator)
+	content = append(separator, tmp[2]...)
+	// fmt.Println(string(content))
+
 	// Goldmarkの初期化
 	mdParser := goldmark.New(
 		goldmark.WithExtensions(
@@ -170,7 +179,6 @@ func parseMarkdown(content []byte) ([]*Slide, error) {
 		}
 		return ast.WalkContinue, nil
 	})
-
 	if err != nil {
 		return nil, fmt.Errorf("[ERROR] failed to walk AST: %w", err)
 	}
@@ -275,45 +283,46 @@ func convertToMarp(slides []*Slide) string {
 	return marpBuilder.String()
 }
 
-func md2s(content []byte, debug bool) (marpContent string) {
+func md2s(content []byte) (marpContent string) {
 	// マークダウンをページごとに変換
 	slides, err := parseMarkdown(content)
 	if err != nil {
 		log.Fatalf("[ERROR] Failed to parse Markdown: %v", err)
 	}
 
-	if !debug {
-		// Gemini で内容をスライドっぽくする
-		var tmp []*Slide
-		slides = append(tmp, slides[1:]...) //qiitaのヘッダーを消すため
-		analyzedSlides, err := analyzeContentWithGemini(slides)
-		if err != nil {
-			log.Fatalf("[ERROR] Failed to analyze content: %v", err)
-		}
-
-		// 連結＆marpタグ追加
-		marpContent = convertToMarp(analyzedSlides)
-	} else {
-		var tmp []*Slide
-		slides = append(tmp, slides[1:]...) //qiitaのヘッダーを消すため
-		marpContent = convertToMarp(slides)
+	// Gemini で内容をスライドっぽくする
+	analyzedSlides, err := analyzeContentWithGemini(slides)
+	if err != nil {
+		log.Fatalf("[ERROR] Failed to analyze content: %v", err)
 	}
+
+	// 連結＆marpタグ追加
+	marpContent = convertToMarp(analyzedSlides)
+
 	return marpContent
 }
 
 func main() {
-	content, err := os.ReadFile("example.md")
-	if err != nil {
-		fmt.Println("[ERROR] failed to read markdown file: %w", err)
-	}
-	result := md2s(content, false)
+	r := gin.Default()
 
-	// 変換結果をファイル出力
-	outputFile := strings.TrimSuffix("example", ".md") + "_marp.md"
-	err = os.WriteFile(outputFile, []byte(result), 0644)
-	if err != nil {
-		log.Fatalf("[ERROR] Failed to write Marp file: %v", err)
-	}
+	// POSTリクエストで文字列を受け取る
+	r.POST("/md2s", func(c *gin.Context) {
+		var requestBody struct {
+			Input string `json:"md"` // リクエストボディのJSONフィールド
+		}
 
-	fmt.Printf("[SUCCESS] Marp file generated: %s\n", outputFile)
+		// JSONのバインド
+		if err := c.ShouldBindJSON(&requestBody); err != nil {
+			c.JSON(400, gin.H{"error": "Invalid request"})
+			return
+		}
+
+		// 文字列を変換（例: 大文字に変換）
+		transformed := md2s([]byte(requestBody.Input))
+
+		// 変換結果をJSONで返す
+		c.JSON(200, gin.H{"marp": transformed})
+	})
+
+	r.Run(":8080") // デフォルトでポート8080で実行
 }
