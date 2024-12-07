@@ -286,18 +286,14 @@ func convertToMarp(slides []*Slide) string {
 
 func deleteEscape(content []byte) (result []byte) {
 	strc := string(content)
-	quoted := strconv.Quote(strc)
-	encryed := base64.StdEncoding.EncodeToString([]byte(quoted))
-	fmt.Println(encryed)
-
-	decryed, err := base64.StdEncoding.DecodeString(encryed)
+	decryed, err := base64.StdEncoding.DecodeString(strc)
 	if err != nil {
-		fmt.Println("failed")
+		fmt.Println("[ERROR] decode failed", err)
 	}
 
 	unescaped, err := strconv.Unquote(string(decryed))
 	if err != nil {
-		fmt.Println("[ERROR] parse failed")
+		fmt.Println("[ERROR] unquote failed", err)
 	}
 	result = []byte(unescaped)
 	return result
@@ -330,7 +326,10 @@ func main() {
 	if err != nil {
 		fmt.Println("[ERROR] failed to read markdown file: %w", err)
 	}
-	decoded := deleteEscape(content)
+	b := strconv.Quote(string(content))
+	c := base64.StdEncoding.EncodeToString([]byte(b))
+	fmt.Println(c)
+	decoded := deleteEscape([]byte(c))
 	result := md2s(decoded, true)
 
 	// 変換結果をファイル出力

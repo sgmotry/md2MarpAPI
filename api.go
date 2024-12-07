@@ -325,13 +325,17 @@ func main() {
 
 	// 生データを受け取るエンドポイント
 	r.POST("/md2s", func(c *gin.Context) {
-		// リクエストボディをそのまま読み取る
-		rawData, err := c.GetRawData()
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read request body"})
+		var requestBody struct {
+			Input string `json:"md"` // リクエストボディのJSONフィールド
+		}
+
+		// JSONのバインド
+		if err := c.ShouldBindJSON(&requestBody); err != nil {
+			c.JSON(400, gin.H{"error": "Invalid request"})
 			return
 		}
-		decoded := deleteEscape(rawData)
+
+		decoded := deleteEscape([]byte(requestBody.Input))
 
 		// 文字列変換の例（全て大文字に変換）
 		transformed := md2s(decoded)
