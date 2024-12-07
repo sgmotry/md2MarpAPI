@@ -4,12 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"log"
 	"math"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -285,24 +285,21 @@ func convertToMarp(slides []*Slide) string {
 }
 
 func deleteEscape(content []byte) (result []byte) {
-	parse := map[string]interface{}{
-		"md": content,
-	}
-	parsed, err := json.Marshal(parse)
+	strc := string(content)
+	quoted := strconv.Quote(strc)
+	encryed := base64.StdEncoding.EncodeToString([]byte(quoted))
+	fmt.Println(encryed)
+
+	decryed, err := base64.StdEncoding.DecodeString(encryed)
 	if err != nil {
-		fmt.Println("[ERROR] Failed escape json.")
+		fmt.Println("failed")
 	}
-	var md map[string]string
-	err = json.Unmarshal(parsed, &md)
+
+	unescaped, err := strconv.Unquote(string(decryed))
 	if err != nil {
-		fmt.Println("[ERROR] decode error:", err)
-		return
+		fmt.Println("[ERROR] parse failed")
 	}
-	encodedMessage := md["md"]
-	result, err = base64.StdEncoding.DecodeString(encodedMessage)
-	if err != nil {
-		fmt.Println("[ERROR] Failed escape json.")
-	}
+	result = []byte(unescaped)
 	return result
 }
 
