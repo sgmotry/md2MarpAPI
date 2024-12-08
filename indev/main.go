@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"log"
@@ -66,12 +65,6 @@ func extractTextFromQiitaBlock(blockText string) string {
 var images []string    // 画像のURL分離用
 var images_index []int // 分離した画像があった配列番号
 func parseMarkdown(content []byte) ([]*Slide, error) {
-
-	// qiitaのメタデータを削除
-	separator := []byte{45, 45, 45}
-	tmp := bytes.Split(content, separator)
-	content = append(separator, tmp[2]...)
-	// fmt.Println(string(content))
 
 	// Goldmarkの初期化
 	mdParser := goldmark.New(
@@ -276,9 +269,12 @@ func analyzeContentWithGemini(slides []*Slide) ([]*Slide, error) {
 func convertToMarp(slides []*Slide) string {
 	var marpBuilder strings.Builder
 	marpBuilder.WriteString("---\nmarp: true\n") // Marpタグ
+	marpBuilder.WriteString("---\n# ")
+	marpBuilder.WriteString("title\n")
+	marpBuilder.WriteString("<style scoped>section{font-size:50px;}</style>")
 
 	for _, slide := range slides {
-		marpBuilder.WriteString("---\n")
+		marpBuilder.WriteString("\n---\n")
 		marpBuilder.WriteString(fmt.Sprintf("# %s\n\n", slide.Title))
 		marpBuilder.WriteString(fmt.Sprintf("%s\n", slide.Content))
 	}
