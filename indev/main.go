@@ -207,8 +207,8 @@ func analyzeContentWithGemini(slides []*Slide) ([]*Slide, error) {
 
 	// スライドを15個ずつに分割する
 	fmt.Println("[slide length]:", len(slides))
-	var s_size = 13
-	var slide_parts [][]*Slide // 分割したスライドの二次元配列 1要素あたり15個のページ
+	var s_size = 13            // 分割ごとのスライド数　15がmaxだが安定性のために余裕を持たせている
+	var slide_parts [][]*Slide // 分割したスライドの二次元配列
 	if len(slides) > s_size {
 		block := math.Ceil(float64(len(slides)) / float64(s_size))
 		for i := 0; i < int(block); i++ {
@@ -223,7 +223,6 @@ func analyzeContentWithGemini(slides []*Slide) ([]*Slide, error) {
 		slide_parts = append(slide_parts, slides[0:])
 	}
 
-	// TODO プロンプトの送信中上のcounterを使って画像を後付けする
 	for j, slide_part := range slide_parts {
 		var wg sync.WaitGroup
 
@@ -324,6 +323,7 @@ func main() {
 	if err != nil {
 		fmt.Println("[ERROR] failed to read markdown file: %w", err)
 	}
+	//TODO content以外に、タイトル、スタイルの番号を指定できるようにする。
 	result := md2s(content, false)
 
 	// 変換結果をファイル出力
