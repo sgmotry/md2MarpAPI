@@ -296,7 +296,7 @@ func convertToMarp(slides []*Slide) string {
 // 	return result
 // }
 
-func md2s(content []byte, debug bool) (marpContent string) {
+func md2s(content []byte, style int, debug bool) (marpContent string) {
 	// マークダウンをページごとに変換
 	slides, err := parseMarkdown(content)
 	if err != nil {
@@ -324,7 +324,7 @@ func main() {
 		fmt.Println("[ERROR] failed to read markdown file: %w", err)
 	}
 	//TODO content以外に、タイトル、スタイルの番号を指定できるようにする。
-	result := md2s(content, false)
+	result := md2s(content, 0, false)
 
 	// 変換結果をファイル出力
 	outputFile := strings.TrimSuffix("example", ".md") + "_marp.md"
