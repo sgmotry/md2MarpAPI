@@ -64,11 +64,7 @@ func extractTextFromQiitaBlock(blockText string) string {
 // マークダウンをページ（ヘッダー基準）ごとに分ける
 var images []string    // 画像のURL分離用
 var images_index []int // 分離した画像があった配列番号
-func parseMarkdown(filePath string) ([]*Slide, error) {
-	content, err := os.ReadFile(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("[ERROR] failed to read markdown file: %w", err)
-	}
+func parseMarkdown(content []byte) ([]*Slide, error) {
 
 	// Goldmarkの初期化
 	mdParser := goldmark.New(
@@ -83,9 +79,9 @@ func parseMarkdown(filePath string) ([]*Slide, error) {
 	var currentSlide *Slide
 
 	// ASTを歩いてスライドを構築
-	var count = -1
-	var afterList = false
-	err = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+	var count = 0
+	var afterOption = false
+	err := ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if entering {
 			fmt.Println(n.Kind())
 			switch n.Kind() {
@@ -102,23 +98,24 @@ func parseMarkdown(filePath string) ([]*Slide, error) {
 					}
 					count++
 				}
-			case ast.KindParagraph, ast.KindTextBlock, ast.KindText:
+				afterOption = true
+			case ast.KindTextBlock, ast.KindText:
 				// すべてのテキストベースのノードを検査
 				var textContent string
-				if afterList {
-					afterList = false
+				if afterOption {
+					afterOption = false
 				} else {
 					textContent = extractText(n, content)
-				}
-				if isQiitaBlock(textContent) {
-					// Qiita独自のマークダウンブロックからテキストを抽出
-					text := extractTextFromQiitaBlock(textContent)
-					if currentSlide != nil {
-						currentSlide.Content += text + "\n"
+					if isQiitaBlock(textContent) {
+						// Qiita独自のマークダウンブロックからテキストを抽出
+						text := extractTextFromQiitaBlock(textContent)
+						if currentSlide != nil {
+							currentSlide.Content += text + "\n"
+						}
+						return ast.WalkSkipChildren, nil
+					} else if currentSlide != nil {
+						currentSlide.Content += textContent + "\n"
 					}
-					return ast.WalkSkipChildren, nil
-				} else if currentSlide != nil {
-					currentSlide.Content += textContent + "\n"
 				}
 			case ast.KindRawHTML:
 				if currentSlide != nil {
@@ -134,7 +131,7 @@ func parseMarkdown(filePath string) ([]*Slide, error) {
 				if currentSlide != nil {
 					// listItem := n.(*ast.ListItem)
 					// currentSlide.Content += "- " + extractText(listItem, content) + "\n"
-					afterList = true
+					afterOption = true
 				}
 			case ast.KindCodeBlock:
 				if currentSlide != nil {
@@ -157,6 +154,7 @@ func parseMarkdown(filePath string) ([]*Slide, error) {
 					imageSrc := string(image.Destination) // 画像のURL
 					images = append(images, fmt.Sprintf("\n---\n![bg fit](%s)\n", imageSrc))
 					images_index = append(images_index, count)
+					afterOption = true
 				}
 			case ast.KindLink:
 				if currentSlide != nil {
@@ -164,18 +162,19 @@ func parseMarkdown(filePath string) ([]*Slide, error) {
 					linkDest := string(link.Destination) // リンク先
 					linkText := extractText(n, content)  // リンクテキスト
 					currentSlide.Content += fmt.Sprintf("\n[%s](%s)\n", linkText, linkDest)
+					afterOption = true
 				}
 			case ast.KindAutoLink:
 				if currentSlide != nil {
 					link := n.(*ast.AutoLink)
 					linkDest := string(link.URL(content)) // リンク先
 					currentSlide.Content += fmt.Sprintf("\n[リンク](%s)\n", linkDest)
+					afterOption = true
 				}
 			}
 		}
 		return ast.WalkContinue, nil
 	})
-
 	if err != nil {
 		return nil, fmt.Errorf("[ERROR] failed to walk AST: %w", err)
 	}
@@ -208,12 +207,13 @@ func analyzeContentWithGemini(slides []*Slide) ([]*Slide, error) {
 
 	// スライドを15個ずつに分割する
 	fmt.Println("[slide length]:", len(slides))
-	var slide_parts [][]*Slide // 分割したスライドの二次元配列 1要素あたり15個のページ
-	if len(slides) > 15 {
-		block := math.Ceil(float64(len(slides)) / 15)
+	var s_size = 13            // 分割ごとのスライド数　15がmaxだが安定性のために余裕を持たせている
+	var slide_parts [][]*Slide // 分割したスライドの二次元配列
+	if len(slides) > s_size {
+		block := math.Ceil(float64(len(slides)) / float64(s_size))
 		for i := 0; i < int(block); i++ {
-			start := i * 15
-			end := start + 15
+			start := i * s_size
+			end := start + s_size
 			if end > len(slides) {
 				end = len(slides)
 			}
@@ -223,7 +223,6 @@ func analyzeContentWithGemini(slides []*Slide) ([]*Slide, error) {
 		slide_parts = append(slide_parts, slides[0:])
 	}
 
-	// TODO プロンプトの送信中上のcounterを使って画像を後付けする
 	for j, slide_part := range slide_parts {
 		var wg sync.WaitGroup
 
@@ -234,12 +233,12 @@ func analyzeContentWithGemini(slides []*Slide) ([]*Slide, error) {
 			go func() {
 				defer wg.Done()
 				// プロンプト設定するとこ
-				prompt := fmt.Sprintf("コンテンツを数行の箇条書きで要約。コンテンツがない場合は　　を出力。それ以外は要約のみ出力 \nコンテンツ\n%s", slide.Content)
+				prompt := fmt.Sprintf("コンテンツを箇条書きプレゼン調に要約。コンテンツがない場合は空白を2個出力。それ以外は要約のみ出力 \n\n以下コンテンツ\n\n%s", slide.Content)
 				// Gemini API を使用してコンテンツを最適化
-				fmt.Println("[send] images_index:", i)
+				fmt.Println("[send] index:", i)
 				resp, err := model.GenerateContent(ctx, genai.Text(prompt))
 				if err != nil {
-					fmt.Println("[ERROR] at images_index:", i, "\n", err)
+					fmt.Println("[ERROR] at index:", i, "\n", err)
 					return
 				}
 				// レスポンスをスライドに代入
@@ -249,9 +248,10 @@ func analyzeContentWithGemini(slides []*Slide) ([]*Slide, error) {
 			}()
 		}
 		wg.Wait()
-		if len(slides) > 15 && j != len(slide_parts)-1 {
+		if len(slides) > s_size && j != len(slide_parts)-1 {
 			time.Sleep(62 * time.Second) // 送信時に若干時間がズレるため少し余裕を持たせる
 		}
+		// 分離しておいた画像を代入
 		var image_counter = 0
 		for i, slide := range slides {
 			if slices.Contains(images_index, i+1) {
@@ -268,9 +268,12 @@ func analyzeContentWithGemini(slides []*Slide) ([]*Slide, error) {
 func convertToMarp(slides []*Slide) string {
 	var marpBuilder strings.Builder
 	marpBuilder.WriteString("---\nmarp: true\n") // Marpタグ
+	marpBuilder.WriteString("---\n# ")
+	marpBuilder.WriteString("title\n")
+	marpBuilder.WriteString("<style scoped>section{font-size:50px;}</style>")
 
 	for _, slide := range slides {
-		marpBuilder.WriteString("---\n")
+		marpBuilder.WriteString("\n---\n")
 		marpBuilder.WriteString(fmt.Sprintf("# %s\n\n", slide.Title))
 		marpBuilder.WriteString(fmt.Sprintf("%s\n", slide.Content))
 	}
@@ -278,30 +281,30 @@ func convertToMarp(slides []*Slide) string {
 	return marpBuilder.String()
 }
 
-var debug = true
+// func deleteEscape(content []byte) (result []byte) {
+// 	strc := string(content)
+// 	decryed, err := base64.StdEncoding.DecodeString(strc)
+// 	if err != nil {
+// 		fmt.Println("[ERROR] decode failed", err)
+// 	}
 
-func main() {
-	var inputFile string
+// 	unescaped, err := strconv.Unquote(string(decryed))
+// 	if err != nil {
+// 		fmt.Println("[ERROR] unquote failed", err)
+// 	}
+// 	result = []byte(unescaped)
+// 	return result
+// }
 
-	// ファイル読み込み
-	if len(os.Args) < 2 {
-		inputFile = "example.md" // デフォルトファイル名
-		fmt.Println("[INFO] No filename input. Use example.md")
-	} else {
-		inputFile = os.Args[1]
-	}
-
+func md2s(content []byte, debug bool) (marpContent string) {
 	// マークダウンをページごとに変換
-	slides, err := parseMarkdown(inputFile)
+	slides, err := parseMarkdown(content)
 	if err != nil {
 		log.Fatalf("[ERROR] Failed to parse Markdown: %v", err)
 	}
 
-	var marpContent string
 	if !debug {
 		// Gemini で内容をスライドっぽくする
-		var tmp []*Slide
-		slides = append(tmp, slides[1:]...) //qiitaのヘッダーを消すため
 		analyzedSlides, err := analyzeContentWithGemini(slides)
 		if err != nil {
 			log.Fatalf("[ERROR] Failed to analyze content: %v", err)
@@ -312,9 +315,20 @@ func main() {
 	} else {
 		marpContent = convertToMarp(slides)
 	}
+	return marpContent
+}
+
+func main() {
+	content, err := os.ReadFile("example.md")
+	if err != nil {
+		fmt.Println("[ERROR] failed to read markdown file: %w", err)
+	}
+	//TODO content以外に、タイトル、スタイルの番号を指定できるようにする。
+	result := md2s(content, false)
+
 	// 変換結果をファイル出力
-	outputFile := strings.TrimSuffix(inputFile, ".md") + "_marp.md"
-	err = os.WriteFile(outputFile, []byte(marpContent), 0644)
+	outputFile := strings.TrimSuffix("example", ".md") + "_marp.md"
+	err = os.WriteFile(outputFile, []byte(result), 0644)
 	if err != nil {
 		log.Fatalf("[ERROR] Failed to write Marp file: %v", err)
 	}
