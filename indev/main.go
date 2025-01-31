@@ -272,7 +272,7 @@ func convertToMarp(slides []*Slide, style int) string {
 	marpBuilder.WriteString(styles.ThemeList[style])
 	marpBuilder.WriteString("---\n# ")
 	marpBuilder.WriteString("title\n")
-	marpBuilder.WriteString("<style scoped>section{font-size:50px;}</style>")
+	marpBuilder.WriteString("<style scoped>section{font-size:50px;text-align:center}</style>")
 
 	for _, slide := range slides {
 		marpBuilder.WriteString("\n---\n")
@@ -326,7 +326,7 @@ func main() {
 		fmt.Println("[ERROR] failed to read markdown file: %w", err)
 	}
 	//TODO content以外に、タイトル、スタイルの番号を指定できるようにする。
-	result := md2s(content, 5, false)
+	result := md2s(content, 3, false)
 
 	// 変換結果をファイル出力
 	outputFile := strings.TrimSuffix("example", ".md") + "_marp.md"
