@@ -1,12 +1,12 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"fmt"
 	"log"
 	"math"
+	"md2MarpAPI/styles"
 	"net/http"
 	"os"
 	"slices"
@@ -71,12 +71,6 @@ var images []string    // 画像のURL分離用
 var images_index []int // 分離した画像があった配列番号
 func parseMarkdown(content []byte) ([]*Slide, error) {
 
-	// qiitaのメタデータを削除
-	separator := []byte{45, 45, 45}
-	tmp := bytes.Split(content, separator)
-	content = append(separator, tmp[2]...)
-	// fmt.Println(string(content))
-
 	// Goldmarkの初期化
 	mdParser := goldmark.New(
 		goldmark.WithExtensions(
@@ -90,11 +84,11 @@ func parseMarkdown(content []byte) ([]*Slide, error) {
 	var currentSlide *Slide
 
 	// ASTを歩いてスライドを構築
-	var count = -1
-	var afterList = false
+	var count = 0
+	var afterOption = false
 	err := ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if entering {
-			// fmt.Println(n.Kind())
+			fmt.Println(n.Kind())
 			switch n.Kind() {
 			case ast.KindHeading:
 				heading := n.(*ast.Heading)
@@ -109,23 +103,24 @@ func parseMarkdown(content []byte) ([]*Slide, error) {
 					}
 					count++
 				}
-			case ast.KindParagraph, ast.KindTextBlock, ast.KindText:
+				afterOption = true
+			case ast.KindTextBlock, ast.KindText:
 				// すべてのテキストベースのノードを検査
 				var textContent string
-				if afterList {
-					afterList = false
+				if afterOption {
+					afterOption = false
 				} else {
 					textContent = extractText(n, content)
-				}
-				if isQiitaBlock(textContent) {
-					// Qiita独自のマークダウンブロックからテキストを抽出
-					text := extractTextFromQiitaBlock(textContent)
-					if currentSlide != nil {
-						currentSlide.Content += text + "\n"
+					if isQiitaBlock(textContent) {
+						// Qiita独自のマークダウンブロックからテキストを抽出
+						text := extractTextFromQiitaBlock(textContent)
+						if currentSlide != nil {
+							currentSlide.Content += text + "\n"
+						}
+						return ast.WalkSkipChildren, nil
+					} else if currentSlide != nil {
+						currentSlide.Content += textContent + "\n"
 					}
-					return ast.WalkSkipChildren, nil
-				} else if currentSlide != nil {
-					currentSlide.Content += textContent + "\n"
 				}
 			case ast.KindRawHTML:
 				if currentSlide != nil {
@@ -141,7 +136,7 @@ func parseMarkdown(content []byte) ([]*Slide, error) {
 				if currentSlide != nil {
 					// listItem := n.(*ast.ListItem)
 					// currentSlide.Content += "- " + extractText(listItem, content) + "\n"
-					afterList = true
+					afterOption = true
 				}
 			case ast.KindCodeBlock:
 				if currentSlide != nil {
@@ -164,6 +159,7 @@ func parseMarkdown(content []byte) ([]*Slide, error) {
 					imageSrc := string(image.Destination) // 画像のURL
 					images = append(images, fmt.Sprintf("\n---\n![bg fit](%s)\n", imageSrc))
 					images_index = append(images_index, count)
+					afterOption = true
 				}
 			case ast.KindLink:
 				if currentSlide != nil {
@@ -171,12 +167,14 @@ func parseMarkdown(content []byte) ([]*Slide, error) {
 					linkDest := string(link.Destination) // リンク先
 					linkText := extractText(n, content)  // リンクテキスト
 					currentSlide.Content += fmt.Sprintf("\n[%s](%s)\n", linkText, linkDest)
+					afterOption = true
 				}
 			case ast.KindAutoLink:
 				if currentSlide != nil {
 					link := n.(*ast.AutoLink)
 					linkDest := string(link.URL(content)) // リンク先
 					currentSlide.Content += fmt.Sprintf("\n[リンク](%s)\n", linkDest)
+					afterOption = true
 				}
 			}
 		}
@@ -214,8 +212,8 @@ func analyzeContentWithGemini(slides []*Slide) ([]*Slide, error) {
 
 	// スライドを15個ずつに分割する
 	fmt.Println("[slide length]:", len(slides))
-	var s_size = 13
-	var slide_parts [][]*Slide // 分割したスライドの二次元配列 1要素あたり15個のページ
+	var s_size = 13            // 分割ごとのスライド数　15がmaxだが安定性のために余裕を持たせている
+	var slide_parts [][]*Slide // 分割したスライドの二次元配列
 	if len(slides) > s_size {
 		block := math.Ceil(float64(len(slides)) / float64(s_size))
 		for i := 0; i < int(block); i++ {
@@ -230,7 +228,6 @@ func analyzeContentWithGemini(slides []*Slide) ([]*Slide, error) {
 		slide_parts = append(slide_parts, slides[0:])
 	}
 
-	// TODO プロンプトの送信中上のcounterを使って画像を後付けする
 	for j, slide_part := range slide_parts {
 		var wg sync.WaitGroup
 
@@ -241,7 +238,7 @@ func analyzeContentWithGemini(slides []*Slide) ([]*Slide, error) {
 			go func() {
 				defer wg.Done()
 				// プロンプト設定するとこ
-				prompt := fmt.Sprintf("コンテンツを5行程度の箇条書きでスライド口調に要約。コンテンツがない場合は　　を出力。それ以外は要約のみ出力 \nコンテンツ\n%s", slide.Content)
+				prompt := fmt.Sprintf("コンテンツを箇条書きプレゼン調に要約。コンテンツがない場合は空白を2個出力。それ以外は要約のみ出力 \n\n以下コンテンツ\n\n%s", slide.Content)
 				// Gemini API を使用してコンテンツを最適化
 				fmt.Println("[send] index:", i)
 				resp, err := model.GenerateContent(ctx, genai.Text(prompt))
@@ -273,12 +270,16 @@ func analyzeContentWithGemini(slides []*Slide) ([]*Slide, error) {
 }
 
 // marpタグを冒頭に追加、ページの分かれたスライドを連結
-func convertToMarp(slides []*Slide) string {
+func convertToMarp(title string, slides []*Slide, style int) string {
 	var marpBuilder strings.Builder
-	marpBuilder.WriteString("---\nmarp: true\n") // Marpタグ
+	marpBuilder.WriteString("---\nmarp: true") // Marpタグ
+	marpBuilder.WriteString(styles.ThemeList[style])
+	marpBuilder.WriteString("---\n# ")
+	marpBuilder.WriteString(title + "\n")
+	marpBuilder.WriteString("<style scoped>section{font-size:50px;text-align:center}</style>")
 
 	for _, slide := range slides {
-		marpBuilder.WriteString("---\n")
+		marpBuilder.WriteString("\n---\n")
 		marpBuilder.WriteString(fmt.Sprintf("# %s\n\n", slide.Title))
 		marpBuilder.WriteString(fmt.Sprintf("%s\n", slide.Content))
 	}
@@ -301,7 +302,7 @@ func deleteEscape(content []byte) (result []byte) {
 	return result
 }
 
-func md2s(content []byte) (marpContent string) {
+func md2s(title string, content []byte, style int) (marpContent string) {
 	// マークダウンをページごとに変換
 	slides, err := parseMarkdown(content)
 	if err != nil {
@@ -315,7 +316,7 @@ func md2s(content []byte) (marpContent string) {
 	}
 
 	// 連結＆marpタグ追加
-	marpContent = convertToMarp(analyzedSlides)
+	marpContent = convertToMarp(title, analyzedSlides, style)
 
 	return marpContent
 }
@@ -326,7 +327,9 @@ func main() {
 	// 生データを受け取るエンドポイント
 	r.POST("/md2s", func(c *gin.Context) {
 		var requestBody struct {
+			Title string `json:"title"`
 			Input string `json:"md"` // リクエストボディのJSONフィールド
+			Style int    `json:"style"`
 		}
 
 		// JSONのバインド
@@ -338,7 +341,7 @@ func main() {
 		decoded := deleteEscape([]byte(requestBody.Input))
 
 		// 文字列変換の例（全て大文字に変換）
-		transformed := md2s(decoded)
+		transformed := md2s(requestBody.Title, decoded, requestBody.Style)
 
 		// 変換後の文字列をそのまま返す
 		c.String(http.StatusOK, transformed)
