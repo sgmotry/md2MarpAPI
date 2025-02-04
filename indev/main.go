@@ -266,12 +266,13 @@ func analyzeContentWithGemini(slides []*Slide) ([]*Slide, error) {
 }
 
 // marpタグを冒頭に追加、ページの分かれたスライドを連結
-func convertToMarp(slides []*Slide, style int) string {
+func convertToMarp(slides []*Slide, title []byte, style int) string {
 	var marpBuilder strings.Builder
 	marpBuilder.WriteString("---\nmarp: true") // Marpタグ
 	marpBuilder.WriteString(styles.ThemeList[style])
 	marpBuilder.WriteString("---\n# ")
-	marpBuilder.WriteString("title\n")
+	marpBuilder.WriteString(string(title))
+	marpBuilder.WriteString("\n")
 	marpBuilder.WriteString("<style scoped>section{font-size:50px;text-align:center}</style>")
 
 	for _, slide := range slides {
@@ -298,7 +299,7 @@ func convertToMarp(slides []*Slide, style int) string {
 // 	return result
 // }
 
-func md2s(content []byte, style int, debug bool) (marpContent string) {
+func md2s(content []byte, title []byte, style int, debug bool) (marpContent string) {
 	// マークダウンをページごとに変換
 	slides, err := parseMarkdown(content)
 	if err != nil {
@@ -313,11 +314,43 @@ func md2s(content []byte, style int, debug bool) (marpContent string) {
 		}
 
 		// 連結＆marpタグ追加
-		marpContent = convertToMarp(analyzedSlides, style)
+		marpContent = convertToMarp(analyzedSlides, title, style)
 	} else {
-		marpContent = convertToMarp(slides, style)
+		marpContent = convertToMarp(slides, title, style)
 	}
 	return marpContent
+}
+
+func generateTitle(content []byte) (title []byte) {
+	ctx := context.Background()
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("[ERROR] Error loading .env file")
+	}
+
+	// Gemini APIクライアントを作成する
+	client, err := genai.NewClient(ctx, option.WithAPIKey(os.Getenv("GEMINI_API_KEY")))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer client.Close()
+
+	// Gemini のモデル指定
+	model := client.GenerativeModel("gemini-1.5-flash")
+
+	// プロンプト設定するとこ
+	prompt := fmt.Sprintf("コンテンツをもとに短いタイトルを1つ作ってください。作ったタイトルだけ出力してください。\n\n以下コンテンツ\n\n%s", string(content))
+	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	if err != nil {
+		fmt.Println("[ERROR] ", err)
+		return
+	}
+
+	for _, part := range resp.Candidates[0].Content.Parts {
+		title = []byte(fmt.Sprintln(part))
+	}
+
+	return title
 }
 
 func main() {
@@ -325,8 +358,16 @@ func main() {
 	if err != nil {
 		fmt.Println("[ERROR] failed to read markdown file: %w", err)
 	}
-	//TODO content以外に、タイトル、スタイルの番号を指定できるようにする。
-	result := md2s(content, 3, false)
+
+	style := 3
+	title := []byte("")
+
+	if string(title) == "" {
+		fmt.Println("Title is empty. Generating title...")
+		title = generateTitle(content)
+	}
+
+	result := md2s(content, []byte(title), style, false)
 
 	// 変換結果をファイル出力
 	outputFile := strings.TrimSuffix("example", ".md") + "_marp.md"
