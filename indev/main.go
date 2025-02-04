@@ -339,7 +339,7 @@ func generateTitle(content []byte) (title []byte) {
 	model := client.GenerativeModel("gemini-1.5-flash")
 
 	// プロンプト設定するとこ
-	prompt := fmt.Sprintf("コンテンツをもとに短いタイトルを1つ作ってください。作ったタイトルだけ出力してください。\n\n以下コンテンツ\n\n%s", string(content))
+	prompt := fmt.Sprintf("コンテンツをもとに短いタイトルを1つ作ってください。作ったタイトルだけ出力してください。コンテンツがない場合は何も出力しないでください。\n\n以下コンテンツ\n\n%s", string(content))
 	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
 	if err != nil {
 		fmt.Println("[ERROR] ", err)
