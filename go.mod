@@ -1,4 +1,4 @@
-module test
+module md2MarpAPI
 
 go 1.23.3
 

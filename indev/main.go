@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"md2MarpAPI/styles"
 	"os"
 	"slices"
 	"strings"
@@ -265,12 +266,13 @@ func analyzeContentWithGemini(slides []*Slide) ([]*Slide, error) {
 }
 
 // marpタグを冒頭に追加、ページの分かれたスライドを連結
-func convertToMarp(slides []*Slide) string {
+func convertToMarp(slides []*Slide, style int) string {
 	var marpBuilder strings.Builder
-	marpBuilder.WriteString("---\nmarp: true\n") // Marpタグ
+	marpBuilder.WriteString("---\nmarp: true") // Marpタグ
+	marpBuilder.WriteString(styles.ThemeList[style])
 	marpBuilder.WriteString("---\n# ")
 	marpBuilder.WriteString("title\n")
-	marpBuilder.WriteString("<style scoped>section{font-size:50px;}</style>")
+	marpBuilder.WriteString("<style scoped>section{font-size:50px;text-align:center}</style>")
 
 	for _, slide := range slides {
 		marpBuilder.WriteString("\n---\n")
@@ -296,7 +298,7 @@ func convertToMarp(slides []*Slide) string {
 // 	return result
 // }
 
-func md2s(content []byte, debug bool) (marpContent string) {
+func md2s(content []byte, style int, debug bool) (marpContent string) {
 	// マークダウンをページごとに変換
 	slides, err := parseMarkdown(content)
 	if err != nil {
@@ -311,9 +313,9 @@ func md2s(content []byte, debug bool) (marpContent string) {
 		}
 
 		// 連結＆marpタグ追加
-		marpContent = convertToMarp(analyzedSlides)
+		marpContent = convertToMarp(analyzedSlides, style)
 	} else {
-		marpContent = convertToMarp(slides)
+		marpContent = convertToMarp(slides, style)
 	}
 	return marpContent
 }
@@ -324,7 +326,7 @@ func main() {
 		fmt.Println("[ERROR] failed to read markdown file: %w", err)
 	}
 	//TODO content以外に、タイトル、スタイルの番号を指定できるようにする。
-	result := md2s(content, false)
+	result := md2s(content, 3, false)
 
 	// 変換結果をファイル出力
 	outputFile := strings.TrimSuffix("example", ".md") + "_marp.md"
